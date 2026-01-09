@@ -1,0 +1,226 @@
+# GitHub Actions Workflow - Input Types Showcase
+# This workflow demonstrates all possible workflow_dispatch input types
+# Run manually from Actions tab -> "Input Types Showcase" -> "Run workflow"
+
+name: Input Types Showcase
+
+on:
+  workflow_dispatch:
+    inputs:
+      # STRING INPUT - Free-form text input
+      string_input:
+        description: 'A string input (free-form text)'
+        required: true
+        type: string
+        default: 'Hello, World!'
+
+      # NUMBER INPUT - Numeric value
+      number_input:
+        description: 'A number input (integer or float)'
+        required: true
+        type: number
+        default: 42
+
+      # BOOLEAN INPUT - True/False checkbox
+      boolean_input:
+        description: 'A boolean input (checkbox)'
+        required: true
+        type: boolean
+        default: true
+
+      # CHOICE INPUT - Dropdown selection
+      choice_input:
+        description: 'A choice input (dropdown selection)'
+        required: true
+        type: choice
+        default: 'option-b'
+        options:
+          - 'option-a'
+          - 'option-b'
+          - 'option-c'
+          - 'option-d'
+
+      # ENVIRONMENT INPUT - Environment selector
+      environment_input:
+        description: 'An environment input (environment selector)'
+        required: true
+        type: environment
+
+jobs:
+  # ============================================
+  # JOB 1: String Input Demonstration
+  # ============================================
+  string-job:
+    name: String Input Job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display String Input
+        run: |
+          echo "============================================"
+          echo "STRING INPUT DEMONSTRATION"
+          echo "============================================"
+          echo "Raw value: ${{ inputs.string_input }}"
+          echo "Type: string"
+          echo "============================================"
+
+      - name: Process String Input
+        run: |
+          INPUT_VALUE="${{ inputs.string_input }}"
+          echo "String length: ${#INPUT_VALUE}"
+          echo "Uppercase: ${INPUT_VALUE^^}"
+          echo "Lowercase: ${INPUT_VALUE,,}"
+
+  # ============================================
+  # JOB 2: Number Input Demonstration
+  # ============================================
+  number-job:
+    name: Number Input Job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Number Input
+        run: |
+          echo "============================================"
+          echo "NUMBER INPUT DEMONSTRATION"
+          echo "============================================"
+          echo "Raw value: ${{ inputs.number_input }}"
+          echo "Type: number"
+          echo "============================================"
+
+      - name: Perform Arithmetic Operations
+        run: |
+          NUM=${{ inputs.number_input }}
+          echo "Original number: $NUM"
+          echo "Doubled: $((NUM * 2))"
+          echo "Squared: $((NUM * NUM))"
+          echo "Plus 100: $((NUM + 100))"
+
+  # ============================================
+  # JOB 3: Boolean Input Demonstration
+  # ============================================
+  boolean-job:
+    name: Boolean Input Job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Boolean Input
+        run: |
+          echo "============================================"
+          echo "BOOLEAN INPUT DEMONSTRATION"
+          echo "============================================"
+          echo "Raw value: ${{ inputs.boolean_input }}"
+          echo "Type: boolean"
+          echo "============================================"
+
+      - name: Conditional Logic Based on Boolean
+        run: |
+          if [ "${{ inputs.boolean_input }}" == "true" ]; then
+            echo "✅ Boolean is TRUE - executing true branch"
+            echo "This step runs when the checkbox is checked"
+          else
+            echo "❌ Boolean is FALSE - executing false branch"
+            echo "This step runs when the checkbox is unchecked"
+          fi
+
+  # ============================================
+  # JOB 4: Choice Input Demonstration
+  # ============================================
+  choice-job:
+    name: Choice Input Job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Choice Input
+        run: |
+          echo "============================================"
+          echo "CHOICE INPUT DEMONSTRATION"
+          echo "============================================"
+          echo "Selected value: ${{ inputs.choice_input }}"
+          echo "Type: choice"
+          echo "Available options: option-a, option-b, option-c, option-d"
+          echo "============================================"
+
+      - name: Handle Different Choices
+        run: |
+          case "${{ inputs.choice_input }}" in
+            "option-a")
+              echo "You selected Option A"
+              echo "Performing Option A specific actions..."
+              ;;
+            "option-b")
+              echo "You selected Option B"
+              echo "Performing Option B specific actions..."
+              ;;
+            "option-c")
+              echo "You selected Option C"
+              echo "Performing Option C specific actions..."
+              ;;
+            "option-d")
+              echo "You selected Option D"
+              echo "Performing Option D specific actions..."
+              ;;
+            *)
+              echo "Unknown option selected"
+              ;;
+          esac
+
+  # ============================================
+  # JOB 5: Environment Input Demonstration
+  # ============================================
+  environment-job:
+    name: 🌍 Environment Input Job
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_input }}
+    steps:
+      - name: Display Environment Input
+        run: |
+          echo "============================================"
+          echo "ENVIRONMENT INPUT DEMONSTRATION"
+          echo "============================================"
+          echo "Selected environment: ${{ inputs.environment_input }}"
+          echo "Type: environment"
+          echo "============================================"
+
+      - name: Show Environment Context
+        run: |
+          echo "Environment Name: ${{ inputs.environment_input }}"
+          echo "Environment URL: ${{ vars.ENVIRONMENT_URL || 'Not configured' }}"
+          echo ""
+          echo "Note: Environment inputs integrate with GitHub Environments"
+          echo "You can use environment-specific secrets and variables"
+          echo "Protection rules and reviewers can be configured per environment"
+
+  # ============================================
+  # JOB 6: Summary Job (Aggregates All Inputs)
+  # ============================================
+  summary-job:
+    name: Summary Job
+    runs-on: ubuntu-latest
+    needs: [string-job, number-job, boolean-job, choice-job, environment-job]
+    steps:
+      - name: Generate Input Summary
+        run: |
+          echo "============================================"
+          echo "       ALL INPUTS SUMMARY"
+          echo "============================================"
+          echo ""
+          echo "String Input:      ${{ inputs.string_input }}"
+          echo "Number Input:      ${{ inputs.number_input }}"
+          echo "Boolean Input:     ${{ inputs.boolean_input }}"
+          echo "Choice Input:      ${{ inputs.choice_input }}"
+          echo "Environment Input: ${{ inputs.environment_input }}"
+          echo ""
+          echo "============================================"
+
+      - name: Create Job Summary
+        run: |
+          echo "## 🎯 Workflow Dispatch Input Showcase Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Input Type | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| String | \`${{ inputs.string_input }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Number | \`${{ inputs.number_input }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Boolean | \`${{ inputs.boolean_input }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Choice | \`${{ inputs.choice_input }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ inputs.environment_input }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Workflow completed successfully* ✨" >> $GITHUB_STEP_SUMMARY
+
