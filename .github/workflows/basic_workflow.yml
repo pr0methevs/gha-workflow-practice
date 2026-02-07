@@ -44,6 +44,7 @@ on:
       environment_input:
         description: 'An environment input (environment selector)'
         required: true
+        default: development
         type: environment
 
 jobs:
