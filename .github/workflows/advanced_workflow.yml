@@ -1,0 +1,419 @@
+# GitHub Actions Workflow - Advanced Input Showcase
+# Demonstrates a rich set of workflow_dispatch inputs with practical naming
+# Run manually from Actions tab -> "Advanced Input Showcase" -> "Run workflow"
+
+name: Advanced Input Showcase
+
+on:
+  workflow_dispatch:
+    inputs:
+      # ── Text Inputs ──────────────────────────────────
+      project_name:
+        description: 'Name of the project to build'
+        required: true
+        type: string
+        default: 'my-awesome-app'
+
+      release_version:
+        description: 'Semantic version for the release (e.g. 1.2.3)'
+        required: true
+        type: string
+        default: '1.0.0'
+
+      commit_sha:
+        description: 'Git commit SHA to build from (leave default for HEAD)'
+        required: false
+        type: string
+        default: 'HEAD'
+
+      custom_tags:
+        description: 'Comma-separated Docker image tags (e.g. latest,stable)'
+        required: false
+        type: string
+        default: 'latest'
+
+      # ── Number Inputs ────────────────────────────────
+      replica_count:
+        description: 'Number of deployment replicas'
+        required: true
+        type: number
+        default: 2
+
+      max_retries:
+        description: 'Max retry attempts for flaky steps'
+        required: false
+        type: number
+        default: 3
+
+      # ── Boolean Inputs ───────────────────────────────
+      run_tests:
+        description: 'Run the test suite before deploying'
+        required: true
+        type: boolean
+        default: true
+
+      run_linter:
+        description: 'Run lint checks'
+        required: true
+        type: boolean
+        default: true
+
+      enable_cache:
+        description: 'Enable build caching'
+        required: false
+        type: boolean
+        default: true
+
+      dry_run:
+        description: 'Simulate the deploy without making changes'
+        required: true
+        type: boolean
+        default: false
+
+      notify_slack:
+        description: 'Send a Slack notification on completion'
+        required: false
+        type: boolean
+        default: true
+
+      # ── Choice Inputs ────────────────────────────────
+      target_environment:
+        description: 'Deployment target environment'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - 'development'
+          - 'staging'
+          - 'production'
+
+      log_level:
+        description: 'Application log verbosity'
+        required: true
+        type: choice
+        default: 'info'
+        options:
+          - 'debug'
+          - 'info'
+          - 'warn'
+          - 'error'
+
+      build_platform:
+        description: 'Target build platform / architecture'
+        required: true
+        type: choice
+        default: 'linux/amd64'
+        options:
+          - 'linux/amd64'
+          - 'linux/arm64'
+          - 'linux/amd64,linux/arm64'
+          - 'darwin/arm64'
+
+      node_version:
+        description: 'Node.js version for the build'
+        required: true
+        type: choice
+        default: '20'
+        options:
+          - '18'
+          - '20'
+          - '22'
+
+      package_manager:
+        description: 'Package manager to use'
+        required: true
+        type: choice
+        default: 'npm'
+        options:
+          - 'npm'
+          - 'yarn'
+          - 'pnpm'
+          - 'bun'
+
+      deploy_strategy:
+        description: 'Deployment rollout strategy'
+        required: true
+        type: choice
+        default: 'rolling'
+        options:
+          - 'rolling'
+          - 'blue-green'
+          - 'canary'
+          - 'recreate'
+
+      cloud_region:
+        description: 'Cloud region to deploy into'
+        required: true
+        type: choice
+        default: 'us-east-1'
+        options:
+          - 'us-east-1'
+          - 'us-west-2'
+          - 'eu-west-1'
+          - 'eu-central-1'
+          - 'ap-southeast-1'
+          - 'ap-northeast-1'
+
+      artifact_retention:
+        description: 'How long to keep build artifacts'
+        required: false
+        type: choice
+        default: '7-days'
+        options:
+          - '1-day'
+          - '7-days'
+          - '30-days'
+          - '90-days'
+
+      # ── Environment Input ────────────────────────────
+      github_environment:
+        description: 'GitHub Environment (for secrets & protection rules)'
+        required: true
+        type: environment
+
+jobs:
+  # ============================================
+  # JOB 1: Validate Inputs
+  # ============================================
+  validate-inputs:
+    name: ✅ Validate Inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version format
+        run: |
+          VERSION="${{ inputs.release_version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid semver format: $VERSION (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "✅ Version $VERSION is valid semver"
+
+      - name: Validate replica count
+        run: |
+          REPLICAS=${{ inputs.replica_count }}
+          if (( REPLICAS < 1 || REPLICAS > 10 )); then
+            echo "::error::Replica count must be between 1 and 10, got $REPLICAS"
+            exit 1
+          fi
+          echo "✅ Replica count $REPLICAS is within range"
+
+      - name: Production guardrails
+        run: |
+          ENV="${{ inputs.target_environment }}"
+          DRY="${{ inputs.dry_run }}"
+          TESTS="${{ inputs.run_tests }}"
+          if [[ "$ENV" == "production" && "$TESTS" == "false" ]]; then
+            echo "::error::Tests must be enabled for production deployments"
+            exit 1
+          fi
+          if [[ "$ENV" == "production" && "$DRY" == "false" ]]; then
+            echo "⚠️  Live production deployment requested — make sure approvals are in place"
+          fi
+          echo "✅ Environment guardrails passed"
+
+  # ============================================
+  # JOB 2: Setup & Build
+  # ============================================
+  build:
+    name: 🔨 Build (${{ inputs.package_manager }}, Node ${{ inputs.node_version }})
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Setup Node.js ${{ inputs.node_version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing with ${{ inputs.package_manager }}..."
+          case "${{ inputs.package_manager }}" in
+            npm)   echo "npm ci" ;;
+            yarn)  echo "yarn install --frozen-lockfile" ;;
+            pnpm)  echo "pnpm install --frozen-lockfile" ;;
+            bun)   echo "bun install --frozen-lockfile" ;;
+          esac
+
+      - name: Enable build cache
+        if: ${{ inputs.enable_cache }}
+        run: echo "🗄️  Build cache enabled"
+
+      - name: Build project
+        run: |
+          echo "🔨 Building ${{ inputs.project_name }} v${{ inputs.release_version }}"
+          echo "   Platform: ${{ inputs.build_platform }}"
+          echo "   Log level: ${{ inputs.log_level }}"
+          echo "   Cache: ${{ inputs.enable_cache }}"
+
+  # ============================================
+  # JOB 3: Lint
+  # ============================================
+  lint:
+    name: 🧹 Lint
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    if: ${{ inputs.run_linter }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run linter
+        run: |
+          echo "🧹 Running lint checks..."
+          echo "   Package manager: ${{ inputs.package_manager }}"
+          echo "✅ Lint passed"
+
+  # ============================================
+  # JOB 4: Test
+  # ============================================
+  test:
+    name: 🧪 Test (retries=${{ inputs.max_retries }})
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ inputs.run_tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run test suite
+        run: |
+          echo "🧪 Running tests for ${{ inputs.project_name }}"
+          echo "   Max retries: ${{ inputs.max_retries }}"
+          echo "   Log level: ${{ inputs.log_level }}"
+          echo "✅ All tests passed"
+
+  # ============================================
+  # JOB 5: Deploy
+  # ============================================
+  deploy:
+    name: 🚀 Deploy → ${{ inputs.target_environment }} (${{ inputs.cloud_region }})
+    runs-on: ubuntu-latest
+    needs: [build, lint, test]
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Deployment banner
+        run: |
+          echo "============================================"
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
+            echo "  🏜️  DRY RUN — no changes will be applied"
+          else
+            echo "  🚀 LIVE DEPLOYMENT"
+          fi
+          echo "============================================"
+
+      - name: Deploy ${{ inputs.project_name }}
+        run: |
+          echo "📋 Deployment Plan"
+          echo "   Project:    ${{ inputs.project_name }}"
+          echo "   Version:    ${{ inputs.release_version }}"
+          echo "   Commit:     ${{ inputs.commit_sha }}"
+          echo "   Environment:${{ inputs.target_environment }}"
+          echo "   Region:     ${{ inputs.cloud_region }}"
+          echo "   Strategy:   ${{ inputs.deploy_strategy }}"
+          echo "   Replicas:   ${{ inputs.replica_count }}"
+          echo "   Platform:   ${{ inputs.build_platform }}"
+          echo "   Tags:       ${{ inputs.custom_tags }}"
+          echo "   Dry run:    ${{ inputs.dry_run }}"
+          echo ""
+          if [ "${{ inputs.dry_run }}" == "true" ]; then
+            echo "⏭️  Skipping actual deployment (dry run)"
+          else
+            echo "🚀 Deploying..."
+            echo "✅ Deployment complete"
+          fi
+
+  # ============================================
+  # JOB 6: Notify
+  # ============================================
+  notify:
+    name: 📣 Notify
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ always() && inputs.notify_slack }}
+    steps:
+      - name: Send Slack notification
+        run: |
+          STATUS="${{ needs.deploy.result }}"
+          if [ "$STATUS" == "success" ]; then
+            EMOJI="✅"
+          else
+            EMOJI="❌"
+          fi
+          echo "$EMOJI Slack notification:"
+          echo "   ${{ inputs.project_name }} v${{ inputs.release_version }}"
+          echo "   → ${{ inputs.target_environment }} (${{ inputs.cloud_region }})"
+          echo "   Status: $STATUS"
+
+  # ============================================
+  # JOB 7: Summary
+  # ============================================
+  summary:
+    name: 📝 Summary
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, build, lint, test, deploy, notify]
+    if: always()
+    steps:
+      - name: Create Job Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<'EOF'
+          ## 🎯 Advanced Workflow Run Summary
+
+          ### 📦 Project
+          | Setting | Value |
+          |---------|-------|
+          | Project | `${{ inputs.project_name }}` |
+          | Version | `${{ inputs.release_version }}` |
+          | Commit  | `${{ inputs.commit_sha }}` |
+          | Tags    | `${{ inputs.custom_tags }}` |
+
+          ### 🛠️ Build Configuration
+          | Setting | Value |
+          |---------|-------|
+          | Node.js Version   | `${{ inputs.node_version }}` |
+          | Package Manager   | `${{ inputs.package_manager }}` |
+          | Build Platform    | `${{ inputs.build_platform }}` |
+          | Build Cache       | `${{ inputs.enable_cache }}` |
+          | Log Level         | `${{ inputs.log_level }}` |
+
+          ### 🚀 Deployment
+          | Setting | Value |
+          |---------|-------|
+          | Target Environment | `${{ inputs.target_environment }}` |
+          | GitHub Environment | `${{ inputs.github_environment }}` |
+          | Cloud Region       | `${{ inputs.cloud_region }}` |
+          | Deploy Strategy    | `${{ inputs.deploy_strategy }}` |
+          | Replicas           | `${{ inputs.replica_count }}` |
+          | Dry Run            | `${{ inputs.dry_run }}` |
+
+          ### 🔧 Options
+          | Setting | Value |
+          |---------|-------|
+          | Run Tests       | `${{ inputs.run_tests }}` |
+          | Run Linter      | `${{ inputs.run_linter }}` |
+          | Max Retries     | `${{ inputs.max_retries }}` |
+          | Notify Slack    | `${{ inputs.notify_slack }}` |
+          | Artifact Retention | `${{ inputs.artifact_retention }}` |
+
+          ### 📊 Job Results
+          | Job | Result |
+          |-----|--------|
+          | Validate | `${{ needs.validate-inputs.result }}` |
+          | Build    | `${{ needs.build.result }}` |
+          | Lint     | `${{ needs.lint.result }}` |
+          | Test     | `${{ needs.test.result }}` |
+          | Deploy   | `${{ needs.deploy.result }}` |
+          | Notify   | `${{ needs.notify.result }}` |
+
+          ---
+          *Workflow completed* ✨
+          EOF
